@@ -20,6 +20,7 @@ import itertools
 import re
 import string
 from typing import Dict, Iterable, List, Optional, Sequence, Tuple, Set
+import strux_rs
 
 
 DeletionMatrix = Sequence[Sequence[int]]
@@ -115,48 +116,11 @@ def parse_stockholm(stockholm_string: str) -> Msa:
             * The names of the targets matched, including the jackhmmer subsequence
                 suffix.
     """
-    name_to_sequence = collections.OrderedDict()
-    for line in stockholm_string.splitlines():
-        line = line.strip()
-        if not line or line.startswith(("#", "//")):
-            continue
-        name, sequence = line.split()
-        if name not in name_to_sequence:
-            name_to_sequence[name] = ""
-        name_to_sequence[name] += sequence
-
-    msa = []
-    deletion_matrix = []
-
-    query = ""
-    keep_columns = []
-    for seq_index, sequence in enumerate(name_to_sequence.values()):
-        if seq_index == 0:
-            # Gather the columns with gaps from the query
-            query = sequence
-            keep_columns = [i for i, res in enumerate(query) if res != "-"]
-
-        # Remove the columns with gaps in the query from all sequences.
-        aligned_sequence = "".join([sequence[c] for c in keep_columns])
-
-        msa.append(aligned_sequence)
-
-        # Count the number of deletions w.r.t. query.
-        deletion_vec = []
-        deletion_count = 0
-        for seq_res, query_res in zip(sequence, query):
-            if seq_res != "-" or query_res != "-":
-                if query_res == "-":
-                    deletion_count += 1
-                else:
-                    deletion_vec.append(deletion_count)
-                    deletion_count = 0
-        deletion_matrix.append(deletion_vec)
-
+    rust_msa = strux_rs.parse_stockholm(stockholm_string)
     return Msa(
-        sequences=msa, 
-        deletion_matrix=deletion_matrix, 
-        descriptions=list(name_to_sequence.keys())
+        sequences=rust_msa.sequences,
+        deletion_matrix=rust_msa.deletion_matrix,
+        descriptions=rust_msa.descriptions,
     )
 
 
@@ -175,26 +139,11 @@ def parse_a3m(a3m_string: str) -> Msa:
                 at `deletion_matrix[i][j]` is the number of residues deleted from
                 the aligned sequence i at residue position j.
     """
-    sequences, descriptions = parse_fasta(a3m_string) 
-    deletion_matrix = []
-    for msa_sequence in sequences:
-        deletion_vec = []
-        deletion_count = 0
-        for j in msa_sequence:
-            if j.islower():
-                deletion_count += 1
-            else:
-                deletion_vec.append(deletion_count)
-                deletion_count = 0
-        deletion_matrix.append(deletion_vec)
-
-    # Make the MSA matrix out of aligned (deletion-free) sequences.
-    deletion_table = str.maketrans("", "", string.ascii_lowercase)
-    aligned_sequences = [s.translate(deletion_table) for s in sequences]
+    rust_msa = strux_rs.parse_a3m(a3m_string)
     return Msa(
-        sequences=aligned_sequences, 
-        deletion_matrix=deletion_matrix,
-        descriptions=descriptions
+        sequences=rust_msa.sequences,
+        deletion_matrix=rust_msa.deletion_matrix,
+        descriptions=rust_msa.descriptions,
     )
 
 
